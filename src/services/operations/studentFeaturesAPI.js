@@ -12,6 +12,12 @@ const {
   SEND_PAYMENT_SUCCESS_EMAIL_API,
 } = studentEndpoints
 
+const razorpayKey = process.env.REACT_APP_RAZORPAY_KEY
+console.log("Key razorpay vali", razorpayKey)
+if (!razorpayKey) {
+  console.error("Razorpay Key is missing in .env file")
+}
+
 // Load the Razorpay SDK from the CDN
 function loadScript(src) {
   return new Promise((resolve) => {
@@ -61,6 +67,7 @@ export async function BuyCourse(
         Authorization: `Bearer ${token}`,
       }
     )
+    console.log("PAYMENT RESPONSE FROM BACKEND:", orderResponse)
 
     if (!orderResponse.data.success) {
       throw new Error(orderResponse.data.message)
@@ -69,20 +76,34 @@ export async function BuyCourse(
 
     // Opening the Razorpay SDK
     const options = {
-      key: process.env.RAZORPAY_KEY,
-      currency: orderResponse.data.data.currency,
-      amount: `${orderResponse.data.data.amount}`,
+      // key: process.env.RAZORPAY_KEY,
+      key: razorpayKey,
+      // key: process.env.RAZORPAY_KEY,
+      // amount: `${orderResponse.data.data.amount}`,
+      // amount: `${orderResponse.data.data.amount}`,
+      // order_id: orderResponse.data.data.id,
+      amount: orderResponse.data.data.amount.toString(),
+      //  order_id: orderResponse.data.data.orderId,
       order_id: orderResponse.data.data.id,
+
       name: "StudyNotion",
       description: "Thank you for Purchasing the Course.",
       image: rzpLogo,
+      receipt: Math.random().toString(),
       prefill: {
         name: `${user_details.firstName} ${user_details.lastName}`,
         email: user_details.email,
       },
       handler: function (response) {
+        const bodyData = {
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          courses: courses, // Send the courses array if needed
+        }
         sendPaymentSuccessEmail(response, orderResponse.data.data.amount, token)
-        verifyPayment({ ...response, courses }, token, navigate, dispatch)
+        //verifyPayment({ ...response, courses }, token, navigate, dispatch)
+        verifyPayment(bodyData, token, navigate, dispatch)
       },
     }
     const paymentObject = new window.Razorpay(options)

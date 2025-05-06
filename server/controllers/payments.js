@@ -73,12 +73,22 @@ exports.capturePayment = async (req, res) => {
 
 // verify the payment
 exports.verifyPayment = async (req, res) => {
+  console.log("Received Body:", req.body)
+
   const razorpay_order_id = req.body?.razorpay_order_id
   const razorpay_payment_id = req.body?.razorpay_payment_id
   const razorpay_signature = req.body?.razorpay_signature
   const courses = req.body?.courses
 
-  const userId = req.user.id
+  const userId = req.user?.id
+
+  console.log({
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+    courses,
+    userId,
+  })
 
   if (
     !razorpay_order_id ||
@@ -87,6 +97,7 @@ exports.verifyPayment = async (req, res) => {
     !courses ||
     !userId
   ) {
+    console.log("Payment verification failed: Missing required data")
     return res.status(200).json({ success: false, message: "Payment Failed" })
   }
 
@@ -97,12 +108,26 @@ exports.verifyPayment = async (req, res) => {
     .update(body.toString())
     .digest("hex")
 
-  if (expectedSignature === razorpay_signature) {
-    await enrollStudents(courses, userId, res)
-    return res.status(200).json({ success: true, message: "Payment Verified" })
-  }
+  console.log({
+    expectedSignature,
+    razorpay_signature,
+    isMatch: expectedSignature === razorpay_signature,
+  })
 
-  return res.status(200).json({ success: false, message: "Payment Failed" })
+  if (expectedSignature === razorpay_signature) {
+    try {
+      await enrollStudents(courses, userId, res)
+      return res
+        .status(200)
+        .json({ success: true, message: "Payment Verified" })
+    } catch (err) {
+      // Handle any errors during the enrollment process
+      console.log("Error enrolling student:", err)
+      return res.status(500).json({ success: false, message: "Internal Error" })
+    }
+  }
+  console.log("Payment verification failed: Signatures do not match")
+  return res.status(400).json({ success: false, message: "Payment Failed" })
 }
 
 // Send Payment Success Email
@@ -119,7 +144,12 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
 
   try {
     const enrolledStudent = await User.findById(userId)
-
+    if (!enrolledStudent) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
     await mailSender(
       enrolledStudent.email,
       `Payment Received`,
@@ -130,6 +160,10 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
         paymentId
       )
     )
+    return res.status(200).json({
+      success: true,
+      message: "Payment success email sent",
+    })
   } catch (error) {
     console.log("error in sending mail", error)
     return res
